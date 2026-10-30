@@ -87,6 +87,20 @@ class _MedicalRecordDetailScreenState extends State<MedicalRecordDetailScreen> {
     'chocls' => 'Chờ cận lâm sàng', 'dangcls' => 'Đang cận lâm sàng', 'hoantat' => 'Hoàn tất',
     'dahuy' => 'Đã hủy', 'khongden' => 'Không đến', _ => s.isEmpty ? 'Chưa cập nhật' : s,
   };
+  String invoiceStatusLabel(String s) => switch (s.toLowerCase()) {
+  'dathanhtoan' => 'Đã thanh toán',
+  'chuathanhtoan' => 'Chưa thanh toán',
+  'dathanhtoanmotphan' => 'Đã thanh toán một phần',
+  'huy' || 'dahuy' => 'Đã hủy',
+  _ => s.isEmpty ? 'Chưa cập nhật' : s,
+  };
+
+  String invoiceTypeLabel(String s) => switch (s.toLowerCase()) {
+    'phikham' => 'Phí khám',
+    'thuoc' => 'Thuốc',
+    'cls' => 'Cận lâm sàng',
+    _ => s.isEmpty ? 'Chưa cập nhật' : s,
+  };
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -232,26 +246,141 @@ class _MedicalRecordDetailScreenState extends State<MedicalRecordDetailScreen> {
   Widget _field(String label,String value) => value.trim().isEmpty ? const SizedBox.shrink() : Padding(padding:const EdgeInsets.only(bottom:11),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:const TextStyle(color:textSecondary,fontSize:12)),const SizedBox(height:4),Text(value,style:const TextStyle(color:textPrimary,fontSize:13,height:1.45,fontWeight:FontWeight.w500))]));
   Widget _empty(String s) => Padding(padding:const EdgeInsets.symmetric(vertical:4),child:Text(s,style:const TextStyle(color:textSecondary,fontSize:13)));
   Widget _cost(String label,dynamic amount,{bool bold=false}) => Padding(padding:const EdgeInsets.symmetric(vertical:4),child:Row(children:[Expanded(child:Text(label,style:TextStyle(color:bold?textPrimary:textSecondary,fontSize:bold?14:12,fontWeight:bold?FontWeight.w800:FontWeight.w500))),Text(money(amount),style:TextStyle(color:bold?primary:textPrimary,fontWeight:FontWeight.w800,fontSize:bold?15:12))]));
-  Widget _order(Map<String,dynamic> m) => Container(margin:const EdgeInsets.only(bottom:9),padding:const EdgeInsets.all(11),decoration:BoxDecoration(color:background,borderRadius:BorderRadius.circular(11)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-    Text(val(m,'tenDichVu','TenDichVu').isEmpty?'Dịch vụ y tế':val(m,'tenDichVu','TenDichVu'),style:const TextStyle(fontWeight:FontWeight.w700,color:textPrimary)),
-    _field('Loại chỉ định',val(m,'loaiChiDinh','LoaiChiDinh')),_field('Ngày chỉ định',date(m['ngayChiDinh'] ?? m['NgayChiDinh'])),_field('Trạng thái',statusLabel(val(m,'trangThai','TrangThai'))),_field('Đơn giá tham khảo',money(m['donGia'])),
-  ]));
-  Widget _prescription(Map<String,dynamic> m) {
-    final meds=maps(m['chiTiet']);
-    return Container(margin:const EdgeInsets.only(bottom:9),padding:const EdgeInsets.all(11),decoration:BoxDecoration(color:background,borderRadius:BorderRadius.circular(11)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Text('Đơn thuốc #${val(m,'maDonThuoc','MaDonThuoc')}',style:const TextStyle(fontWeight:FontWeight.w800,color:textPrimary)),
-      _field('Ngày kê',date(m['ngayKeThuoc'] ?? m['NgayKeThuoc'])),_field('Chẩn đoán',val(m,'chanDoan','ChanDoan')),_field('Ghi chú',val(m,'ghiChu','GhiChu')),
-      if(meds.isEmpty) _empty('Chưa có thuốc trong đơn.') else ...meds.map((t)=>Container(margin:const EdgeInsets.only(top:7),padding:const EdgeInsets.all(10),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(9),border:Border.all(color:border)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Text(val(t,'tenThuoc','TenThuoc').isEmpty?'Thuốc':val(t,'tenThuoc','TenThuoc'),style:const TextStyle(fontWeight:FontWeight.w700,color:textPrimary)),
-        _field('Số lượng','${val(t,'soLuong','SoLuong')} ${val(t,'donViTinh','DonViTinh')}'),_field('Đơn giá',money(t['donGia'])),_field('Thành tiền',money(t['thanhTien'])),_field('Liều dùng',val(t,'lieuDung','LieuDung')),_field('Thời gian dùng',val(t,'thoiGianDung','ThoiGianDung')),_field('Hướng dẫn',val(t,'huongDanSuDung','HuongDanSuDung')),
-      ]))),_cost('Tổng đơn thuốc',m['tongTien'],bold:true),
-    ]));
-  }
+  Widget _order(Map<String, dynamic> m) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: border),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          val(m, 'tenDichVu', 'TenDichVu').isEmpty
+              ? 'Dịch vụ y tế'
+              : val(m, 'tenDichVu', 'TenDichVu'),
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            color: textPrimary,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _field('Loại chỉ định', val(m, 'loaiChiDinh', 'LoaiChiDinh')),
+        _field(
+          'Ngày chỉ định',
+          date(m['ngayChiDinh'] ?? m['NgayChiDinh']),
+        ),
+        _field(
+          'Trạng thái',
+          statusLabel(val(m, 'trangThai', 'TrangThai')),
+        ),
+        _field('Đơn giá tham khảo', money(m['donGia'])),
+      ],
+    ),
+  );
+  Widget _prescription(Map<String, dynamic> m) {
+  final meds = maps(m['chiTiet']);
+
+  return Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: border),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Đơn thuốc #${val(m, 'maDonThuoc', 'MaDonThuoc')}',
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            color: textPrimary,
+            fontSize: 14,
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        _field(
+          'Ngày kê',
+          date(m['ngayKeThuoc'] ?? m['NgayKeThuoc']),
+        ),
+        _field('Chẩn đoán', val(m, 'chanDoan', 'ChanDoan')),
+        _field('Ghi chú', val(m, 'ghiChu', 'GhiChu')),
+
+        if (meds.isEmpty)
+          _empty('Chưa có thuốc trong đơn.')
+        else
+          ...meds.map((t) => Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  val(t, 'tenThuoc', 'TenThuoc').isEmpty
+                      ? 'Thuốc'
+                      : val(t, 'tenThuoc', 'TenThuoc'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textPrimary,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                _field(
+                  'Số lượng',
+                  '${val(t, 'soLuong', 'SoLuong')} ${val(t, 'donViTinh', 'DonViTinh')}',
+                ),
+                _field('Đơn giá', money(t['donGia'])),
+                _field('Thành tiền', money(t['thanhTien'])),
+                _field('Liều dùng', val(t, 'lieuDung', 'LieuDung')),
+                _field(
+                  'Thời gian dùng',
+                  val(t, 'thoiGianDung', 'ThoiGianDung'),
+                ),
+                _field(
+                  'Hướng dẫn',
+                  val(t, 'huongDanSuDung', 'HuongDanSuDung'),
+                ),
+              ],
+            ),
+          )),
+
+        const SizedBox(height: 8),
+
+        _cost('Tổng đơn thuốc', m['tongTien'], bold: true),
+      ],
+    ),
+  );
+}
   Widget _invoice(Map<String,dynamic> m) {
     final lines=maps(m['chiTiet']);
     return Container(margin:const EdgeInsets.only(top:10),padding:const EdgeInsets.all(11),decoration:BoxDecoration(color:background,borderRadius:BorderRadius.circular(11)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       Text('Hóa đơn #${val(m,'maHoaDon','MaHoaDon')}',style:const TextStyle(fontWeight:FontWeight.w800,color:textPrimary)),
-      _field('Ngày lập',date(m['ngayLapHoaDon'] ?? m['NgayLapHoaDon'])),_field('Loại hóa đơn',val(m,'loaiHoaDon','LoaiHoaDon')),_field('Trạng thái thanh toán',val(m,'trangThai','TrangThai')),
+      _field('Ngày lập',date(m['ngayLapHoaDon'] ?? m['NgayLapHoaDon'])),
+      _field(
+        'Loại hóa đơn',
+        invoiceTypeLabel(val(m, 'loaiHoaDon', 'LoaiHoaDon')),
+      ),
+      _field(
+        'Trạng thái thanh toán',
+        invoiceStatusLabel(val(m, 'trangThai', 'TrangThai')),
+      ),
       if(lines.isNotEmpty) ...lines.map((line)=>Padding(padding:const EdgeInsets.symmetric(vertical:5),child:Row(children:[Expanded(child:Text(val(line,'noiDung','NoiDung').isEmpty?'Khoản thu':val(line,'noiDung','NoiDung'),style:const TextStyle(fontSize:12,color:textPrimary))),Text(money(line['thanhTien']),style:const TextStyle(fontSize:12,fontWeight:FontWeight.w700))]))),
       _cost('Tổng hóa đơn',m['tongTien'],bold:true),
     ]));

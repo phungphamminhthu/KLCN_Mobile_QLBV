@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/router/app_router.dart';
 import '../../../shared/widgets/password_visibility_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../notifications/services/fcm_service.dart';
 import 'forgot_password_screen.dart';
 
 //===========================================
@@ -110,13 +111,20 @@ class _LoginScreenState extends State<LoginScreen> {
       final role = (user['VaiTro'] ?? '').toString().trim().toUpperCase();
 
       if (role != 'BENHNHAN') {
-        ApiClient.instance.clearToken();
+          ApiClient.instance.clearToken();
 
         setState(() {
           _errorMessage = 'Tài khoản này không thuộc vai trò bệnh nhân.';
           _successMessage = null;
         });
         return;
+      }
+
+      // Chỉ đăng ký FCM khi tài khoản là bệnh nhân.
+      try {
+        await FcmService.instance.registerDevice();
+      } catch (e) {
+        debugPrint('Đăng ký thông báo thất bại: $e');
       }
 
       // Hiển thị thông báo thành công trước khi chuyển trang.

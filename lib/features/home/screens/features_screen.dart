@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/app_scaffold.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// ============================================================
 /// FEATURES SCREEN - MÀN HÌNH CHỨC NĂNG
@@ -102,56 +103,142 @@ class FeaturesScreen extends StatelessWidget {
 
   /// Hiển thị thông tin liên hệ mẫu.
   /// Thay nội dung bằng thông tin chính thức của bệnh viện sau này.
-  void _showContactDialog(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          title: const Row(
+  
+/// Hiển thị thông tin liên hệ bệnh viện.
+void _showContactDialog(BuildContext context) {
+  const String hotline = '1900 2699'; // Thay bằng hotline thật
+  const String email = 'hospitalmedcare38@gmail.com'; // Thay bằng email thật
+  const String address = '120 Lũy Bán Bích,P.Tân Thới Hòa, TP.Hồ Chí Minh'; // Thay bằng địa chỉ thật
+
+  Future<void> openLink(String value) async {
+    final uri = Uri.parse(value);
+
+    if (!await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    )) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể mở ứng dụng tương ứng.'),
+        ),
+      );
+    }
+  }
+
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      return Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.support_agent_rounded,
-                color: primary,
-                size: 28,
-              ),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Liên hệ bệnh viện',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    color: textPrimary,
+              Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0EEFF),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: const Icon(
+                      Icons.support_agent_rounded,
+                      color: Color(0xFF2563EB),
+                      size: 28,
+                    ),
                   ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Liên hệ bệnh viện',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              _ContactItem(
+                icon: Icons.phone_in_talk_rounded,
+                title: 'Hotline',
+                value: hotline,
+                color: const Color(0xFF2563EB),
+                onTap: () => openLink('tel:$hotline'),
+              ),
+
+              const SizedBox(height: 14),
+
+              _ContactItem(
+                icon: Icons.email_outlined,
+                title: 'Email',
+                value: email,
+                color: const Color(0xFF0D9488),
+                onTap: () => openLink('mailto:$email'),
+              ),
+
+              const SizedBox(height: 14),
+
+              _ContactItem(
+                icon: Icons.location_on_outlined,
+                title: 'Địa chỉ',
+                value: address,
+                color: const Color(0xFFEA580C),
+              ),
+
+              const SizedBox(height: 14),
+
+              _ContactItem(
+                icon: Icons.access_time_rounded,
+                title: 'Giờ làm việc',
+                value: 'Thứ 2 - Thứ 7: 07:00 - 17:00',
+                color: const Color(0xFF7C3AED),
+              ),
+
+              const SizedBox(height: 20),
+
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF2563EB),
+                    side: const BorderSide(
+                      color: Color(0xFFBFDBFE),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Đóng'),
                 ),
               ),
             ],
           ),
-          content: const Text(
-            'Thông tin liên hệ của bệnh viện sẽ được cập nhật tại đây.',
-            style: TextStyle(
-              fontSize: 15,
-              height: 1.5,
-              color: textSecondary,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text(
-                'Đóng',
-                style: TextStyle(color: primary),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
+
 }
 
 /// ============================================================
@@ -229,3 +316,76 @@ class _FeatureMenuCard extends StatelessWidget {
     );
   }
 }
+
+
+class _ContactItem extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _ContactItem({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.color,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onTap != null)
+            const Icon(
+              Icons.open_in_new_rounded,
+              size: 17,
+              color: Color(0xFF94A3B8),
+            ),
+        ],
+      ),
+    );
+  }
+}
+

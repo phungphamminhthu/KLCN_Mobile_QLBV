@@ -1,36 +1,9 @@
-// ============================================================
-// APP SCAFFOLD - KHUNG GIAO DIỆN DÙNG CHUNG CHO APP MEDCARE
-// ============================================================
-//
-// MỤC ĐÍCH:
-// - Tạo khung giao diện thống nhất cho các màn hình bệnh nhân.
-// - Quản lý thanh điều hướng dưới gồm 4 tab.
-// - Giữ màu sắc, icon, kích thước và vị trí tab đồng nhất.
-//
-// CÁCH SỬ DỤNG:
-// AppScaffold(
-//   title: 'Thông báo',
-//   selectedIndex: 1,
-//   body: NotificationScreenContent(),
-// )
-//
-// LƯU Ý:
-// - body là nội dung riêng của từng màn hình.
-// - selectedIndex xác định tab đang được chọn.
-// - Mỗi màn hình chỉ nên có một Scaffold quản lý thanh tab.
-// - Khi thêm tab mới, cần cập nhật danh sách route, nhãn và icon.
-// ============================================================
-// Vị trí tab đang được chọn:
-// 0 = Trang chủ
-// 1 = Thông báo
-// 2 = Chức năng
-// 3 = Cá nhân
-
 import 'package:flutter/material.dart';
+
 import '../router/app_router.dart';
+import '../../features/notifications/controllers/notification_badge_controller.dart';
 
-
-class AppScaffold extends StatelessWidget {
+class AppScaffold extends StatefulWidget {
   final String title;
   final Widget body;
   final int selectedIndex;
@@ -42,15 +15,17 @@ class AppScaffold extends StatelessWidget {
     this.selectedIndex = 0,
   });
 
-  // Thứ tự tab theo giao diện MedCare mới.
-  
+  @override
+  State<AppScaffold> createState() => _AppScaffoldState();
+}
+
+class _AppScaffoldState extends State<AppScaffold> {
   static const List<String> _routes = [
-    AppRouter.patientHome, // Trang chủ bệnh nhân sau đăng nhập
+    AppRouter.patientHome,
     AppRouter.notifications,
     AppRouter.features,
     AppRouter.profile,
   ];
-
 
   static const List<String> _labels = [
     'Trang chủ',
@@ -74,15 +49,23 @@ class AppScaffold extends StatelessWidget {
   ];
 
   @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationBadgeController.instance.refreshCount();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF0F8FF),
 
-      // Giữ AppBar nếu màn hình đó cần tiêu đề riêng.
-      appBar: title.isEmpty
+      appBar: widget.title.isEmpty
           ? null
           : AppBar(
-              title: Text(title),
+              title: Text(widget.title),
               backgroundColor: const Color(0xFFF0F8FF),
               foregroundColor: const Color(0xFF1E293B),
               elevation: 0,
@@ -91,7 +74,7 @@ class AppScaffold extends StatelessWidget {
 
       body: SafeArea(
         bottom: false,
-        child: body,
+        child: widget.body,
       ),
 
       bottomNavigationBar: Container(
@@ -110,7 +93,7 @@ class AppScaffold extends StatelessWidget {
             height: 78,
             child: Row(
               children: List.generate(_labels.length, (index) {
-                final isSelected = selectedIndex == index;
+                final isSelected = widget.selectedIndex == index;
 
                 return Expanded(
                   child: InkWell(
@@ -119,7 +102,11 @@ class AppScaffold extends StatelessWidget {
 
                       final route = _routes[index];
 
-                      // Chuyển tab và tránh tạo nhiều trang chồng nhau.
+                      if (index == 1) {
+                        NotificationBadgeController.instance
+                            .refreshCount();
+                      }
+
                       if (ModalRoute.of(context)?.settings.name != route) {
                         Navigator.pushReplacementNamed(context, route);
                       }
@@ -138,17 +125,74 @@ class AppScaffold extends StatelessWidget {
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(24),
                           ),
-                          child: Icon(
-                            isSelected
-                                ? _selectedIcons[index]
-                                : _icons[index],
-                            size: 26,
-                            color: isSelected
-                                ? const Color(0xFF0369A1)
-                                : const Color(0xFF64748B),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Center(
+                                child: Icon(
+                                  isSelected
+                                      ? _selectedIcons[index]
+                                      : _icons[index],
+                                  size: 26,
+                                  color: isSelected
+                                      ? const Color(0xFF0369A1)
+                                      : const Color(0xFF64748B),
+                                ),
+                              ),
+
+                              if (index == 1)
+                                Positioned(
+                                  right: -9,
+                                  top: -5,
+                                  child: AnimatedBuilder(
+                                    animation:
+                                        NotificationBadgeController.instance,
+                                    builder: (context, child) {
+                                      final count =
+                                          NotificationBadgeController
+                                              .instance.unreadCount;
+
+                                      if (count <= 0) {
+                                        return const SizedBox.shrink();
+                                      }
+
+                                      return Container(
+                                        constraints: const BoxConstraints(
+                                          minWidth: 17,
+                                          minHeight: 17,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                          vertical: 1,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFEF4444),
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          count > 99 ? '99+' : '$count',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
+
                         const SizedBox(height: 4),
+
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 2),
                           child: Text(

@@ -41,6 +41,8 @@ class ApiClient {
   String? _token;
   String? _resetToken;
 
+  bool get hasToken => _token != null && _token!.isNotEmpty;
+
   /// Gọi sau khi đăng nhập thành công.
   void setToken(String? token) {
     _token = token;
@@ -144,39 +146,39 @@ class ApiClient {
     //   }
     // }
   
-Future<dynamic> get(
-  String endpoint, {
-  Map<String, String>? queryParameters,
-}) async {
-  final uri = _buildUri(
-    endpoint,
-    queryParameters: queryParameters,
-  );
-
-  debugPrint('========== DEBUG API GET ==========');
-  debugPrint('URL: $uri');
-
-  try {
-    final response = await http
-        .get(uri, headers: _headers())
-        .timeout(const Duration(seconds: 20));
-
-    debugPrint('HTTP STATUS: ${response.statusCode}');
-    debugPrint('RESPONSE BODY: ${response.body}');
-
-    return _decodeResponse(response);
-  } on ApiException {
-    rethrow;
-  } catch (e) {
-    debugPrint('API ERROR: $e');
-
-    throw ApiException(
-      'Không thể kết nối máy chủ. '
-      'Hãy kiểm tra địa chỉ API và kết nối mạng.',
-      cause: e,
+  Future<dynamic> get(
+    String endpoint, {
+    Map<String, String>? queryParameters,
+  }) async {
+    final uri = _buildUri(
+      endpoint,
+      queryParameters: queryParameters,
     );
+
+    debugPrint('========== DEBUG API GET ==========');
+    debugPrint('URL: $uri');
+
+    try {
+      final response = await http
+          .get(uri, headers: _headers())
+          .timeout(const Duration(seconds: 20));
+
+      debugPrint('HTTP STATUS: ${response.statusCode}');
+      debugPrint('RESPONSE BODY: ${response.body}');
+
+      return _decodeResponse(response);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      debugPrint('API ERROR: $e');
+
+      throw ApiException(
+        'Không thể kết nối máy chủ. '
+        'Hãy kiểm tra địa chỉ API và kết nối mạng.',
+        cause: e,
+      );
+    }
   }
-}
 
 
   // post
@@ -424,35 +426,35 @@ Future<dynamic> get(
 
 
   Future<Map<String, dynamic>> verifyPasswordResetOtp({
-  required String email,
-  required String otp,
-}) async {
-  final result = await post(
-    '/api/auth/verify-otp',
-    queryParameters: {
-      'email': email.trim().toLowerCase(),
-      'otp': otp.trim(),
-    },
-  );
+    required String email,
+    required String otp,
+  }) async {
+    final result = await post(
+      '/api/auth/verify-otp',
+      queryParameters: {
+        'email': email.trim().toLowerCase(),
+        'otp': otp.trim(),
+      },
+    );
 
-  if (result is Map) {
-    final response = Map<String, dynamic>.from(result);
-    final token = response['resetToken']?.toString();
+    if (result is Map) {
+      final response = Map<String, dynamic>.from(result);
+      final token = response['resetToken']?.toString();
 
-    if (token == null || token.isEmpty) {
-      throw const ApiException(
-        'Backend không trả về resetToken.',
-      );
+      if (token == null || token.isEmpty) {
+        throw const ApiException(
+          'Backend không trả về resetToken.',
+        );
+      }
+
+      _resetToken = token;
+      return response;
     }
 
-    _resetToken = token;
-    return response;
+    throw const ApiException(
+      'Phản hồi xác minh OTP không hợp lệ.',
+    );
   }
-
-  throw const ApiException(
-    'Phản hồi xác minh OTP không hợp lệ.',
-  );
-}
 
   Future<Map<String, dynamic>> resetPassword({
   required String email,
@@ -515,43 +517,87 @@ Future<dynamic> get(
   }
 
   
-/// Đổi mật khẩu khi người dùng đã đăng nhập.
-/// Backend cần có POST /api/auth/change-password.
-Future<Map<String, dynamic>> changePassword({
-  required String currentPassword,
-  required String newPassword,
-  required String confirmPassword,
-}) async {
-  if (_token == null || _token!.isEmpty) {
+  /// Đổi mật khẩu khi người dùng đã đăng nhập.
+  /// Backend cần có POST /api/auth/change-password.
+  Future<Map<String, dynamic>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    if (_token == null || _token!.isEmpty) {
+      throw const ApiException(
+        'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+      );
+    }
+
+    final result = await post(
+      '/api/auth/change-password',
+      body: {
+        'matKhauHienTai': currentPassword,
+        'matKhauMoi': newPassword,
+        'matKhauXacNhan': confirmPassword,
+      },
+    );
+
+    if (result is Map) {
+      return Map<String, dynamic>.from(result);
+    }
+
+    if (result is String) {
+      return {
+        'success': true,
+        'message': result,
+      };
+    }
+
     throw const ApiException(
-      'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+      'Phản hồi đổi mật khẩu từ máy chủ không hợp lệ.',
     );
   }
 
-  final result = await post(
-    '/api/auth/change-password',
-    body: {
-      'matKhauHienTai': currentPassword,
-      'matKhauMoi': newPassword,
-      'matKhauXacNhan': confirmPassword,
+  
+/// Lấy danh sách thông báo của bệnh nhân.
+Future<List<dynamic>> getNotifications({
+  int limit = 50,
+}) async {
+  final result = await get(
+    '/api/thong-bao',
+    queryParameters: {
+      'limit': limit.toString(),
     },
   );
 
-  if (result is Map) {
-    return Map<String, dynamic>.from(result);
-  }
+  if (result is List) return result;
 
-  if (result is String) {
-    return {
-      'success': true,
-      'message': result,
-    };
+  throw const ApiException(
+    'Dữ liệu danh sách thông báo không hợp lệ.',
+  );
+}
+
+/// Lấy số lượng thông báo chưa đọc.
+Future<int> getUnreadNotificationCount() async {
+  final result = await get('/api/thong-bao/chua-doc');
+
+  if (result is Map) {
+    final count = result['count'];
+    if (count is num) return count.toInt();
   }
 
   throw const ApiException(
-    'Phản hồi đổi mật khẩu từ máy chủ không hợp lệ.',
+    'Không thể lấy số lượng thông báo chưa đọc.',
   );
 }
+
+/// Đánh dấu một thông báo đã đọc.
+Future<void> markNotificationAsRead(int id) async {
+  await patch('/api/thong-bao/$id/da-doc');
+}
+
+/// Đánh dấu tất cả thông báo đã đọc.
+Future<void> markAllNotificationsAsRead() async {
+  await patch('/api/thong-bao/da-doc-tat-ca');
+}
+
 
 
 
@@ -576,4 +622,5 @@ class ApiException implements Exception {
     return 'ApiException: $message'
         '${statusCode == null ? '' : ' (HTTP $statusCode)'}';
   }
+
 }

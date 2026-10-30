@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "909024438743",
+    "project_id": "quanlybenhvien-ce84f",
+    "storage_bucket": "quanlybenhvien-ce84f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:909024438743:android:2afcfbfa2388fa12530392",
+        "android_client_info": {
+          "package_name": "com.example.quanly_benh_vien_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJmsrpstNZCSRZISFexZlr84B6q0-4q0k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

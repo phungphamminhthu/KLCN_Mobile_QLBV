@@ -25,6 +25,22 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
 
   List<Map<String, dynamic>> _appointments = [];
 
+  bool _isCancelling = false;
+  int? _cancellingAppointmentId;
+
+  bool _canCancelAppointment(Map<String, dynamic> appointment) {
+    final status = appointment['trangThaiLichKham']?.toString();
+
+    const cancellableStatuses = {
+      'DaDat',
+      'DaXacNhan',
+      'DaTiepNhan',
+      'ChoGoi',
+    };
+
+    return cancellableStatuses.contains(status);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -135,6 +151,132 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 
+  // =====================================
+  // huy lich
+  // =====================================
+  Future<void> _cancelAppointment(
+    Map<String, dynamic> appointment,
+  ) async {
+    final maLichKham = int.tryParse(
+      appointment['maLichKham']?.toString() ?? '',
+    );
+
+    if (maLichKham == null) {
+      _showMessage('Không tìm thấy mã lịch khám.');
+      return;
+    }
+
+    final reasonController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Hủy lịch khám'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bạn có chắc muốn hủy lịch khám ngày '
+                  '${_formatDate('${appointment['ngayKham']}')} '
+                  'lúc ${_formatTime('${appointment['gioKham']}')} không?',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: reasonController,
+                  maxLines: 3,
+                  maxLength: 255,
+                  decoration: const InputDecoration(
+                    labelText: 'Lý do hủy (không bắt buộc)',
+                    hintText: 'Nhập lý do hủy lịch...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Quay lại'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Xác nhận hủy'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      reasonController.dispose();
+      return;
+    }
+
+    final reason = reasonController.text.trim();
+    reasonController.dispose();
+
+    setState(() {
+      _isCancelling = true;
+      _cancellingAppointmentId = maLichKham;
+    });
+
+    var message = 'Hủy lịch khám thành công.';
+    var success = false;
+
+    try {
+      final response = await ApiClient.instance.post(
+        '/api/lich-kham/$maLichKham/huy',
+        body: {'lyDo': reason},
+      );
+
+      success = true;
+
+      if (response is Map && response['message'] != null) {
+        message = response['message'].toString();
+      }
+    } catch (e) {
+      message = e is ApiException
+          ? e.message
+          : 'Không thể hủy lịch khám. Vui lòng thử lại.';
+    }
+
+    if (!mounted) return;
+
+    if (success) {
+      // Cập nhật danh sách trước khi tắt trạng thái loading.
+      await _loadAppointments();
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _isCancelling = false;
+      _cancellingAppointmentId = null;
+    });
+
+    _showMessage(message);
+  }
+
+  // =====================================
+  // thong bao
+  // =====================================
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+  }
+
   // ====================================
   // ĐIỀU HƯỚNG ĐẾN MÀN HÌNH THANH TOÁN 
   //=====================================
@@ -175,33 +317,29 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   //   }
   // }
   
-List<Map<String, dynamic>> get _filteredAppointments {
-  double getAmount(dynamic value) {
-    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+  List<Map<String, dynamic>> get _filteredAppointments {
+    double getAmount(dynamic value) {
+      return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    return _appointments.where((appointment) {
+      final status = appointment['trangThaiLichKham']?.toString();
+      final total = getAmount(appointment['tongChiPhi']);
+      final remaining = getAmount(appointment['soTienConLai']);
+
+      switch (_filter) {
+        case 'Chưa thanh toán':
+          return status != 'DaHuy' && remaining > 0;
+
+        case 'Đã thanh toán':
+          return status != 'DaHuy' && total > 0 && remaining <= 0;
+
+        default:
+          // Tất cả: bao gồm cả lịch đã hủy
+          return true;
+      }
+    }).toList();
   }
-
-  return _appointments.where((appointment) {
-    final status = appointment['trangThaiLichKham']?.toString();
-    final total = getAmount(appointment['tongChiPhi']);
-    final remaining = getAmount(appointment['soTienConLai']);
-
-    // Không hiển thị lịch đã hủy trong các bộ lọc thanh toán
-    if (status == 'DaHuy') {
-      return false;
-    }
-
-    switch (_filter) {
-      case 'Chưa thanh toán':
-        return remaining > 0;
-
-      case 'Đã thanh toán':
-        return total > 0 && remaining <= 0;
-
-      default:
-        return true;
-    }
-  }).toList();
-}
 
 
   String _money(dynamic value) {
@@ -604,8 +742,11 @@ Color _appointmentColor(String status) {
   }
 
   Widget _appointmentCard(Map<String, dynamic> appointment) {
-    final total = appointment['tongChiPhi'] as double;
-    final remaining = appointment['soTienConLai'] as double;
+    final total =
+    (appointment['tongChiPhi'] as num?)?.toDouble() ?? 0.0;
+
+    final remaining =
+    (appointment['soTienConLai'] as num?)?.toDouble() ?? 0.0;
     final status = '${appointment['trangThaiLichKham']}';
     final paid = _isPaid(appointment);
     final cancelled = _isCancelled(appointment);
@@ -711,7 +852,7 @@ Color _appointmentColor(String status) {
               'Còn phải trả: ${_money(remaining)}',
             ),
           ],
-          const SizedBox(height: 16),
+          //const SizedBox(height: 16),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -732,6 +873,38 @@ Color _appointmentColor(String status) {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          if (_canCancelAppointment(appointment)) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isCancelling
+                    ? null
+                    : () => _cancelAppointment(appointment),
+                icon: _isCancelling &&
+                        _cancellingAppointmentId ==
+                            int.tryParse(
+                              appointment['maLichKham']?.toString() ?? '',
+                            )
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.event_busy_outlined),
+                label: const Text('Hủy lịch khám'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFDC2626),
+                  side: const BorderSide(color: Color(0xFFDC2626)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: [

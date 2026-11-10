@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/providers/patient_profile_manager.dart';
 
 class ProfileInformationScreen extends StatefulWidget {
   const ProfileInformationScreen({super.key});
@@ -16,6 +17,7 @@ class _ProfileInformationScreenState
   String? errorMessage;
 
   Map<String, dynamic> userInfo = {};
+  Map<String, dynamic> patientInfo = {};
 
   static const Color primaryColor = Color(0xFF2563EB);
   static const Color backgroundColor = Color(0xFFF8FAFC);
@@ -27,6 +29,8 @@ class _ProfileInformationScreenState
   }
 
   Future<void> _loadUserInfo() async {
+    if (!mounted) return;
+
     setState(() {
       isLoading = true;
       errorMessage = null;
@@ -35,12 +39,74 @@ class _ProfileInformationScreenState
     try {
       final result = await ApiClient.instance.getCurrentUser();
 
+      final rawProfiles = result['DanhSachBenhNhan'] ??
+          result['danhSachBenhNhan'];
+
+      Map<String, dynamic> selectedPatient = {};
+
+      if (rawProfiles is List && rawProfiles.isNotEmpty) {
+        final selectedId =
+            PatientProfileManager.instance.selectedPatientId;
+
+        final profiles = rawProfiles
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+
+        // Ưu tiên hồ sơ đang được người dùng chọn.
+        if (selectedId != null) {
+          for (final profile in profiles) {
+            final id = int.tryParse(
+              (profile['MaBenhNhan'] ??
+                      profile['maBenhNhan'] ??
+                      '')
+                  .toString(),
+            );
+
+            if (id == selectedId) {
+              selectedPatient = profile;
+              break;
+            }
+          }
+        }
+
+        // Nếu không tìm thấy hồ sơ đang chọn,
+        // lấy hồ sơ mặc định.
+        if (selectedPatient.isEmpty) {
+          for (final profile in profiles) {
+            final value = profile['LaHoSoMacDinh'] ??
+                profile['laHoSoMacDinh'];
+
+            final isDefault = value == true ||
+                value.toString() == '1' ||
+                value.toString().toLowerCase() == 'true';
+
+            if (isDefault) {
+              selectedPatient = profile;
+              break;
+            }
+          }
+        }
+
+        // Nếu không có hồ sơ mặc định thì lấy hồ sơ đầu tiên.
+        if (selectedPatient.isEmpty && profiles.isNotEmpty) {
+          selectedPatient = profiles.first;
+        }
+      }
+
       if (!mounted) return;
 
       setState(() {
         userInfo = result;
+        patientInfo = selectedPatient;
         isLoading = false;
       });
+
+      debugPrint('===== THÔNG TIN TÀI KHOẢN =====');
+      debugPrint('$userInfo');
+
+      debugPrint('===== HỒ SƠ BỆNH NHÂN ĐANG CHỌN =====');
+      debugPrint('$patientInfo');
     } catch (e) {
       if (!mounted) return;
 
@@ -63,6 +129,31 @@ class _ProfileInformationScreenState
     }
 
     return 'Chưa cập nhật';
+  }
+
+  String _getPatientValue(List<String> keys) {
+    for (final key in keys) {
+      final value = patientInfo[key];
+
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+
+    return 'Chưa cập nhật';
+  }
+
+  String _formatPatientDate(String value) {
+    if (value == 'Chưa cập nhật') return value;
+
+    try {
+      final date = DateTime.parse(value);
+      return '${date.day.toString().padLeft(2, '0')}/'
+          '${date.month.toString().padLeft(2, '0')}/'
+          '${date.year}';
+    } catch (_) {
+      return value;
+    }
   }
 
   Widget _buildInfoItem({
@@ -122,11 +213,9 @@ class _ProfileInformationScreenState
 
   @override
   Widget build(BuildContext context) {
-    final fullName = _getValue([
-      'hoTen',
+    final fullName = _getPatientValue([
       'HoTen',
-      'tenNguoiDung',
-      'TenNguoiDung',
+      'hoTen',
     ]);
 
     final avatarUrl = _getValue([
@@ -315,7 +404,7 @@ class _ProfileInformationScreenState
                               value: _getValue([
                                 'email',
                                 'Email',
-                              ]),
+                              ]), 
                             ),
                             const Divider(
                               height: 1,
@@ -325,10 +414,12 @@ class _ProfileInformationScreenState
                             _buildInfoItem(
                               icon: Icons.cake_outlined,
                               title: 'Ngày sinh',
-                              value: _getValue([
-                                'ngaySinh',
+                              value: _formatPatientDate(
+                              _getPatientValue([
                                 'NgaySinh',
+                                'ngaySinh',
                               ]),
+                            ),
                             ),
                             const Divider(
                               height: 1,
@@ -338,9 +429,9 @@ class _ProfileInformationScreenState
                             _buildInfoItem(
                               icon: Icons.wc_outlined,
                               title: 'Giới tính',
-                              value: _getValue([
-                                'gioiTinh',
+                             value: _getPatientValue([
                                 'GioiTinh',
+                                'gioiTinh',
                               ]),
                             ),
                             const Divider(
@@ -351,9 +442,9 @@ class _ProfileInformationScreenState
                             _buildInfoItem(
                               icon: Icons.location_on_outlined,
                               title: 'Địa chỉ',
-                              value: _getValue([
-                                'diaChi',
+                              value: _getPatientValue([
                                 'DiaChi',
+                                'diaChi',
                               ]),
                             ),
                             const Divider(
@@ -364,10 +455,10 @@ class _ProfileInformationScreenState
                             _buildInfoItem(
                             icon: Icons.emergency_outlined,
                             title: 'Số điện thoại khẩn cấp',
-                            value: _getValue([
-                                'soDienThoaiKhanCap',
+                            value: _getPatientValue([
                                 'SoDienThoaiKhanCap',
-                            ]),
+                                'soDienThoaiKhanCap',
+                              ]),
                             ),
                             const Divider(
                             height: 1,
@@ -377,10 +468,10 @@ class _ProfileInformationScreenState
                             _buildInfoItem(
                             icon: Icons.medical_information_outlined,
                             title: 'Tiền sử bệnh',
-                            value: _getValue([
-                                'tienSuBenh',
+                            value: _getPatientValue([
                                 'TienSuBenh',
-                            ]),
+                                'tienSuBenh',
+                              ]),
                             ),
                           ],
                         ),

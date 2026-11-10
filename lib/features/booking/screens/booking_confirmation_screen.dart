@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import 'booking_success_screen.dart';
+import '../../../core/providers/patient_profile_manager.dart';
 
 class BookingConfirmationScreen extends StatefulWidget {
   final String ngayKham;
@@ -304,8 +305,10 @@ class _BookingConfirmationScreenState
     );
   }
 
-  
-Future<void> _continueBooking() async {
+  // =====================================
+  // xác nhận đặt lịch
+  // =====================================
+ Future<void> _continueBooking() async {
   final lyDoKham = _lyDoKhamController.text.trim();
 
   if (lyDoKham.isEmpty) {
@@ -340,22 +343,42 @@ Future<void> _continueBooking() async {
     return;
   }
 
+  // Lấy hồ sơ bệnh nhân hiện đang được chọn.
+  final profileManager = PatientProfileManager.instance;
+  final selectedProfile = profileManager.selectedProfile;
+  final maBenhNhan = profileManager.selectedPatientId;
+
+  if (selectedProfile == null || maBenhNhan == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Không tìm thấy hồ sơ bệnh nhân. Vui lòng quay lại trang chủ và chọn hồ sơ.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    return;
+  }
+
   if (_isSubmitting) return;
 
   setState(() => _isSubmitting = true);
 
   debugPrint('===== REQUEST ĐẶT LỊCH =====');
-  debugPrint('maLichLamViec: ${widget.maLichLamViec}');
+  debugPrint('maBenhNhan: $maBenhNhan');
+  debugPrint('tenBenhNhan: ${selectedProfile.hoTen}');
+  debugPrint('maLichLamViec: $maLichLamViec');
   debugPrint('gioKham: ${widget.gioBatDau}');
-  debugPrint('lyDoKham: ${_lyDoKhamController.text.trim()}');
+  debugPrint('lyDoKham: $lyDoKham');
 
   try {
     final response = await ApiClient.instance.post(
       '/api/lich-kham/dat-lich',
       body: {
+        'maBenhNhan': maBenhNhan,
         'maLichLamViec': maLichLamViec,
-        'gioKham': widget.gioBatDau, 
-        'lyDoKham': _lyDoKhamController.text.trim(),
+        'gioKham': widget.gioBatDau,
+        'lyDoKham': lyDoKham,
       },
     );
 
@@ -372,7 +395,6 @@ Future<void> _continueBooking() async {
 
     final data = Map<String, dynamic>.from(response);
 
-    // Backend phải trả về đủ thông tin xác nhận đặt lịch.
     final maLichKham = data['maLichKham'];
     final maSoThuTu = data['maSoThuTu'];
     final soThuTu = data['soThuTu'];
@@ -387,36 +409,35 @@ Future<void> _continueBooking() async {
       );
     }
 
-    // Chỉ quay lại màn hình trước sau khi API thành công.
-    
     Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-            builder: (_) => BookingSuccessScreen(
-                booking: <String, dynamic>{
-                    'maLichKham': maLichKham,
-                    'maSoThuTu': maSoThuTu,
-                    'soThuTu': soThuTu,
-                    'maHoaDon': maHoaDon,
-                    'tongTien': data['tongTien'],
-                    'trangThaiLichKham': data['trangThaiLichKham'],
-                    'trangThaiSoThuTu': data['trangThaiSoThuTu'],
-                    'trangThaiHoaDon': data['trangThaiHoaDon'],
-                    'message': data['message'] ?? 'Đặt lịch khám thành công.',
-                'ngayKham': widget.ngayKham,
-                'tenKhoa': widget.tenKhoa,
-                'maKhoa': widget.maKhoa,
-                'maBacSi': widget.maBacSi,
-                'tenBacSi': widget.tenBacSi,
-                'gioBatDau': widget.gioBatDau,
-                'gioKetThuc': widget.gioKetThuc,
-                'tenPhong': widget.tenPhong,
-                'giaKham': data['tongTien'] ?? widget.giaKham,
-                'lyDoKham': lyDoKham,
-                },
-            ),
+      MaterialPageRoute(
+        builder: (_) => BookingSuccessScreen(
+          booking: <String, dynamic>{
+            'maLichKham': maLichKham,
+            'maSoThuTu': maSoThuTu,
+            'soThuTu': soThuTu,
+            'maHoaDon': maHoaDon,
+            'tongTien': data['tongTien'],
+            'trangThaiLichKham': data['trangThaiLichKham'],
+            'trangThaiSoThuTu': data['trangThaiSoThuTu'],
+            'trangThaiHoaDon': data['trangThaiHoaDon'],
+            'message': data['message'] ?? 'Đặt lịch khám thành công.',
+            'ngayKham': widget.ngayKham,
+            'tenKhoa': widget.tenKhoa,
+            'maKhoa': widget.maKhoa,
+            'maBacSi': widget.maBacSi,
+            'tenBacSi': widget.tenBacSi,
+            'gioBatDau': widget.gioBatDau,
+            'gioKetThuc': widget.gioKetThuc,
+            'tenPhong': widget.tenPhong,
+            'giaKham': data['tongTien'] ?? widget.giaKham,
+            'lyDoKham': lyDoKham,
+            'maBenhNhan': maBenhNhan,
+            'tenBenhNhan': selectedProfile.hoTen,
+          },
         ),
+      ),
     );
-
   } on ApiException catch (e) {
     if (!mounted) return;
 

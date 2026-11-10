@@ -286,98 +286,136 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
   // ============================================
   // GỬI THÔNG TIN ĐĂNG KÝ
   // ============================================
-  Future<void> _submitRegistration() async {
-    FocusScope.of(context).unfocus();
+  
+Future<void> _submitRegistration() async {
+  FocusScope.of(context).unfocus();
 
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+  if (!_formKey.currentState!.validate()) {
+    return;
+  }
 
-    if (_dateOfBirth == null) {
-      _showMessage('Vui lòng chọn ngày sinh.', isError: true);
-      return;
-    }
+  if (_dateOfBirth == null) {
+    _showMessage('Vui lòng chọn ngày sinh.', isError: true);
+    return;
+  }
 
-    if (_gender == null) {
-      _showMessage('Vui lòng chọn giới tính.', isError: true);
-      return;
-    }
+  if (_gender == null) {
+    _showMessage('Vui lòng chọn giới tính.', isError: true);
+    return;
+  }
 
-    if (_selectedProvince == null) {
-      _showMessage('Vui lòng chọn tỉnh/thành phố.', isError: true);
-      return;
-    }
+  if (_selectedProvince == null) {
+    _showMessage('Vui lòng chọn tỉnh/thành phố.', isError: true);
+    return;
+  }
 
-    if (_selectedWard == null) {
-      _showMessage('Vui lòng chọn phường/xã.', isError: true);
-      return;
-    }
+  if (_selectedWard == null) {
+    _showMessage('Vui lòng chọn phường/xã.', isError: true);
+    return;
+  }
 
-    setState(() {
-      _loading = true;
-    });
+  setState(() {
+    _loading = true;
+  });
 
-    try {
-      final response = await _apiClient.post(
-        '/api/auth/register',
-        body: {
-          'email': widget.email.trim().toLowerCase(),
-          'tenDangNhap': _usernameController.text.trim(),
-          'matKhau': widget.password,
-          'hoTen': _fullNameController.text.trim(),
-          'soDienThoai': _phoneController.text.trim(),
-          'ngaySinh': _dateOfBirth!.toIso8601String().split('T').first,
-          'gioiTinh': _gender,
-          'diaChi': _buildAddress(),
-          'soDienThoaiKhanCap':
+  try {
+    // BƯỚC 1: TẠO TÀI KHOẢN
+    final response = await _apiClient.post(
+      '/api/auth/register',
+      body: {
+        'email': widget.email.trim().toLowerCase(),
+        'tenDangNhap': _usernameController.text.trim(),
+        'matKhau': widget.password,
+        'hoTen': _fullNameController.text.trim(),
+        'soDienThoai': _phoneController.text.trim(),
+        'ngaySinh': _dateOfBirth!.toIso8601String().split('T').first,
+        'gioiTinh': _gender,
+        'diaChi': _buildAddress(),
+        'soDienThoaiKhanCap':
             _emergencyPhoneController.text.trim().isEmpty
                 ? null
                 : _emergencyPhoneController.text.trim(),
-
         'tienSuBenh':
             _medicalHistoryController.text.trim().isEmpty
                 ? null
                 : _medicalHistoryController.text.trim(),
-        },
+      },
+    );
+
+    if (!mounted) return;
+
+    // BƯỚC 2: KIỂM TRA KẾT QUẢ ĐĂNG KÝ
+    final registrationSuccess = response is Map &&
+        (response['success'] == true ||
+            response['MaNguoiDung'] != null ||
+            response['maNguoiDung'] != null);
+
+    if (!registrationSuccess) {
+      final message = response is Map
+          ? (response['message'] ??
+              response['error'] ??
+              'Đăng ký chưa thành công. Vui lòng thử lại.')
+          : 'Đăng ký chưa thành công. Vui lòng thử lại.';
+
+      _showMessage(message.toString(), isError: true);
+      return;
+    }
+
+    // BƯỚC 3: TỰ ĐỘNG ĐĂNG NHẬP SAU KHI ĐĂNG KÝ
+    // ApiClient.login() sẽ lấy JWT và lưu bằng setToken().
+    try {
+      await _apiClient.login(
+        tenDangNhap: _usernameController.text.trim(),
+        matKhau: widget.password,
       );
 
       if (!mounted) return;
 
-      if (response is Map &&
-          (response['success'] == true ||
-              response['MaNguoiDung'] != null ||
-              response['maNguoiDung'] != null)) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => RegistrationSuccessScreen(email: widget.email),
-          ),
-        );
-      } else {
-        final message = response is Map
-            ? (response['message'] ??
-                  response['error'] ??
-                  'Đăng ký chưa thành công. Vui lòng thử lại.')
-            : 'Đăng ký chưa thành công. Vui lòng thử lại.';
-
-        _showMessage(message.toString(), isError: true);
+      // Kiểm tra token đã được lưu chưa.
+      if (!_apiClient.hasToken) {
+        throw Exception('Không nhận được JWT Token từ máy chủ.');
       }
-    } catch (error) {
+
+      debugPrint('ĐĂNG KÝ: Tạo tài khoản thành công.');
+      debugPrint('ĐĂNG NHẬP: Đã lưu JWT Token.');
+
+      // BƯỚC 4: CHUYỂN ĐẾN TRANG ĐĂNG KÝ THÀNH CÔNG
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RegistrationSuccessScreen(
+            email: widget.email,
+          ),
+        ),
+      );
+    } catch (loginError) {
       if (!mounted) return;
 
+      // Tài khoản đã được tạo nhưng đăng nhập tự động thất bại.
+      // Không gọi đăng ký lại vì có thể gây trùng tài khoản.
       _showMessage(
-        'Không thể đăng ký tài khoản: '
-        '${_extractError(error)}',
+        'Tài khoản đã được tạo thành công nhưng đăng nhập tự động '
+        'không thành công. Vui lòng đăng nhập lại. '
+        '${_extractError(loginError)}',
         isError: true,
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
+    }
+  } catch (error) {
+    if (!mounted) return;
+
+    _showMessage(
+      'Không thể đăng ký tài khoản: ${_extractError(error)}',
+      isError: true,
+    );
+  } finally {
+    if (mounted) {
+      setState(() {
+        _loading = false;
+      });
     }
   }
+}
+
 
   // ============================================
   // Ô NHẬP LIỆU DÙNG CHUNG

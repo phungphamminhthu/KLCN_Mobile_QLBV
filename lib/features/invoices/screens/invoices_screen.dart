@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/providers/patient_profile_manager.dart';
 
 const Color primaryBlue = Color(0xFF2563EB);
 const Color backgroundColor = Color(0xFFF8FAFC);
@@ -47,15 +48,43 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   List<Invoice> _invoices = [];
   bool _isLoading = false;
   String? _errorMessage;
+  int _loadRequestId = 0;
 
   @override
   void initState() {
     super.initState();
+
+    PatientProfileManager.instance.addListener(
+      _onPatientProfileChanged,
+    );
+
     _loadInvoices();
   }
 
+  void _onPatientProfileChanged() {
+    _loadInvoices();
+  }
+
+
+  // =================================
+  // tải danh sách hóa đơn
+  // =================================
   Future<void> _loadInvoices() async {
-    if (!mounted || _isLoading) return;
+    if (!mounted) return;
+
+    final requestId = ++_loadRequestId;
+
+    final maBenhNhan =
+        PatientProfileManager.instance.selectedPatientId;
+
+    if (maBenhNhan == null) {
+      setState(() {
+        _invoices = [];
+        _errorMessage = 'Vui lòng chọn hồ sơ bệnh nhân.';
+        _isLoading = false;
+      });
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -63,8 +92,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     });
 
     try {
-      final appointmentResponse =
-          await ApiClient.instance.get('/api/lich-kham/cua-toi');
+      final appointmentResponse = await ApiClient.instance.get(
+        '/api/lich-kham/cua-toi?maBenhNhan=$maBenhNhan',
+      );
+
+      if (!mounted || requestId != _loadRequestId) return;
 
       if (appointmentResponse is! List) {
         throw const FormatException(
@@ -78,131 +110,200 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
       for (final item in appointmentResponse) {
         if (item is! Map) continue;
+
         final appointment = Map<String, dynamic>.from(item);
+
         final maLichKham = int.tryParse(
           (appointment['maLichKham'] ?? '').toString(),
         );
+
         if (maLichKham == null || maLichKham <= 0) continue;
 
         try {
           final response = await ApiClient.instance.get(
             '/api/thanh-toan/lich-kham/$maLichKham/hoa-don',
           );
+
+          if (!mounted || requestId != _loadRequestId) return;
+
           if (response is! List) continue;
 
           for (final invoiceItem in response) {
             if (invoiceItem is! Map) continue;
+
             final json = Map<String, dynamic>.from(invoiceItem);
-            final rawId = json['maHoaDon'] ?? json['id'] ?? json['maHD'];
-            if (rawId == null || rawId.toString().trim().isEmpty) continue;
+
+            final rawId =
+                json['maHoaDon'] ?? json['id'] ?? json['maHD'];
+
+            if (rawId == null || rawId.toString().trim().isEmpty) {
+              continue;
+            }
 
             final invoiceId = rawId.toString().trim();
+
             if (seenInvoiceIds.contains(invoiceId)) continue;
 
-            // API mới trả thanhToan dạng danh sách; vẫn hỗ trợ dạng object cũ.
+            // Hỗ trợ thanhToan dạng List hoặc Map.
             final List<Map<String, dynamic>> payments = [];
             final rawPayments = json['thanhToan'];
+
             if (rawPayments is List) {
               for (final p in rawPayments) {
-                if (p is Map) payments.add(Map<String, dynamic>.from(p));
+                if (p is Map) {
+                  payments.add(Map<String, dynamic>.from(p));
+                }
               }
             } else if (rawPayments is Map) {
               payments.add(Map<String, dynamic>.from(rawPayments));
             }
 
-            final successfulPayments = payments.where((p) =>
-                (p['trangThai'] ?? '').toString().trim().toLowerCase() ==
-                'dathanhtoan').toList();
+            final successfulPayments = payments.where((p) {
+              return (p['trangThai'] ?? '')
+                      .toString()
+                      .trim()
+                      .toLowerCase() ==
+                  'dathanhtoan';
+            }).toList();
 
-            // Trạng thái trong bảng ThanhToan mới là căn cứ xác nhận giao dịch.
-            // Chỉ dùng trạng thái hóa đơn khi backend chưa trả danh sách thanh toán.
             final invoiceStatus = (json['trangThai'] ?? '')
-                .toString().trim().toLowerCase();
+                .toString()
+                .trim()
+                .toLowerCase();
+
             final isPaid = successfulPayments.isNotEmpty ||
                 (payments.isEmpty && invoiceStatus == 'dathanhtoan');
+
+            // Chỉ hiển thị hóa đơn đã thanh toán.
             if (!isPaid) continue;
 
-            successfulPayments.sort((a, b) =>
-                _parseDate(b['ngayThanhToan']).compareTo(
-                  _parseDate(a['ngayThanhToan']),
-                ));
+            successfulPayments.sort(
+              (a, b) => _parseDate(b['ngayThanhToan']).compareTo(
+                _parseDate(a['ngayThanhToan']),
+              ),
+            );
+
             final payment = successfulPayments.isNotEmpty
                 ? successfulPayments.first
                 : <String, dynamic>{};
 
+            // Lấy nội dung chi tiết hóa đơn.
             final rawDetails = json['chiTietHoaDon'];
             final detailTexts = <String>[];
+
             if (rawDetails is List) {
               for (final detailItem in rawDetails) {
                 if (detailItem is! Map) continue;
-                final detail = Map<String, dynamic>.from(detailItem);
-                final content = (detail['noiDung'] ??
-                        detail['tenDichVu'] ?? detail['moTa'] ?? '')
-                    .toString().trim();
-                if (content.isNotEmpty && !detailTexts.contains(content)) {
+
+                final detail =
+                    Map<String, dynamic>.from(detailItem);
+
+                final content = (
+                  detail['noiDung'] ??
+                  detail['tenDichVu'] ??
+                  detail['moTa'] ??
+                  ''
+                ).toString().trim();
+
+                if (content.isNotEmpty &&
+                    !detailTexts.contains(content)) {
                   detailTexts.add(content);
                 }
               }
             }
 
             final createdAt = _parseDate(
-              json['ngayLapHoaDon'] ?? json['ngayTao'] ?? json['ngayLap'],
+              json['ngayLapHoaDon'] ??
+                  json['ngayTao'] ??
+                  json['ngayLap'],
             );
+
             final paidAt = _parseDate(
-              payment['ngayThanhToan'] ?? json['ngayThanhToan'],
+              payment['ngayThanhToan'] ??
+                  json['ngayThanhToan'],
             );
+
+            final appointmentDate =
+                _parseDate(appointment['ngayKham']);
 
             debugPrint('========== PARSE HOA DON ==========');
             debugPrint('MA HOA DON: $invoiceId');
-            final appointmentDate = _parseDate(appointment['ngayKham']);
-
-            debugPrint(
-              'NGAY KHAM: ${appointment['ngayKham']} -> $appointmentDate',
-            );
-            debugPrint('NGAY LAP: ${json['ngayLapHoaDon']} -> $createdAt');
+            debugPrint('NGAY KHAM: ${appointment['ngayKham']}');
+            debugPrint('NGAY LAP: ${json['ngayLapHoaDon']}');
             debugPrint('CHI TIET: $detailTexts');
             debugPrint('PAYMENT SUCCESS: $payment');
-            debugPrint('NGAY THANH TOAN: ${payment['ngayThanhToan']} -> $paidAt');
             debugPrint('SO TIEN: ${payment['soTien'] ?? json['tongTien']}');
             debugPrint('===================================');
 
             seenInvoiceIds.add(invoiceId);
-            loadedInvoices.add(Invoice(
-              id: invoiceId,
-              createdAt: createdAt,
-              description: detailTexts.isNotEmpty
-                  ? detailTexts.join(', ')
-                  : (json['loaiHoaDon'] ?? json['noiDung'] ??
-                      json['tenDichVu'] ?? 'Hóa đơn khám bệnh').toString(),
-              department: (json['tenKhoa'] ?? appointment['tenKhoa'] ??
-                  'Chưa cập nhật').toString(),
-              amount: _parseAmount(payment['soTien'] ?? json['tongTien']),
-              paymentMethod: (payment['phuongThucThanhToan'] ??
-                  json['phuongThucThanhToan'] ?? 'Chưa cập nhật').toString(),
-              transactionId: (payment['maGiaoDich'] ??
-                  json['maGiaoDich'] ?? 'Chưa cập nhật').toString(),
-              paidAt: paidAt,
-              appointmentDate: appointmentDate,
-            ));
+
+            loadedInvoices.add(
+              Invoice(
+                id: invoiceId,
+                createdAt: createdAt,
+                description: detailTexts.isNotEmpty
+                    ? detailTexts.join(', ')
+                    : (
+                        json['loaiHoaDon'] ??
+                        json['noiDung'] ??
+                        json['tenDichVu'] ??
+                        'Hóa đơn khám bệnh'
+                      ).toString(),
+                department: (
+                  json['tenKhoa'] ??
+                  appointment['tenKhoa'] ??
+                  'Chưa cập nhật'
+                ).toString(),
+                amount: _parseAmount(
+                  payment['soTien'] ?? json['tongTien'],
+                ),
+                paymentMethod: (
+                  payment['phuongThucThanhToan'] ??
+                  json['phuongThucThanhToan'] ??
+                  'Chưa cập nhật'
+                ).toString(),
+                transactionId: (
+                  payment['maGiaoDich'] ??
+                  json['maGiaoDich'] ??
+                  'Chưa cập nhật'
+                ).toString(),
+                paidAt: paidAt,
+                appointmentDate: appointmentDate,
+              ),
+            );
           }
-        } catch (_) {
-          requestErrors.add('Không tải được hóa đơn của lịch khám $maLichKham.');
+        } catch (e) {
+          debugPrint(
+            'Lỗi tải hóa đơn lịch khám $maLichKham: $e',
+          );
+
+          requestErrors.add(
+            'Không tải được hóa đơn của lịch khám $maLichKham.',
+          );
         }
       }
 
-      loadedInvoices.sort((a, b) => b.paidAt.compareTo(a.paidAt));
-      if (!mounted) return;
+      loadedInvoices.sort(
+        (a, b) => b.paidAt.compareTo(a.paidAt),
+      );
+
+      if (!mounted || requestId != _loadRequestId) return;
+
       setState(() {
         _invoices = loadedInvoices;
         _isLoading = false;
-        _errorMessage = loadedInvoices.isEmpty && requestErrors.isNotEmpty
-            ? 'Không thể tải được hóa đơn. Vui lòng thử lại.'
-            : null;
+
+        _errorMessage =
+            loadedInvoices.isEmpty && requestErrors.isNotEmpty
+                ? 'Không thể tải được hóa đơn. Vui lòng thử lại.'
+                : null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _loadRequestId) return;
+
       setState(() {
         _isLoading = false;
+
         _errorMessage = e is ApiException
             ? e.message
             : e is FormatException
@@ -291,7 +392,13 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
   @override
   void dispose() {
+    PatientProfileManager.instance.removeListener(
+      _onPatientProfileChanged,
+    );
+
+    _loadRequestId++;
     _searchController.dispose();
+
     super.dispose();
   }
 

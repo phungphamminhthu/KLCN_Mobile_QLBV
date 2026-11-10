@@ -13,6 +13,13 @@ class FcmService {
 
   static final FcmService instance = FcmService._();
 
+  static final ValueNotifier<int> notificationUpdateSignal =
+    ValueNotifier<int>(0);
+
+  void _notifyNotificationUpdated() {
+    notificationUpdateSignal.value++;
+  }
+
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
   final FlutterLocalNotificationsPlugin _localNotifications =
@@ -104,6 +111,7 @@ class FcmService {
         debugPrint('FCM data: ${initialMessage.data}');
 
         await _refreshBadge();
+        _notifyNotificationUpdated();
 
         // TODO: Điều hướng theo initialMessage.data.
       }
@@ -137,6 +145,7 @@ class FcmService {
 
     // Backend đã lưu thông báo nên cập nhật lại badge.
     await _refreshBadge();
+    _notifyNotificationUpdated();
 
     final notification = message.notification;
 
@@ -167,6 +176,7 @@ class FcmService {
     debugPrint('FCM data: ${message.data}');
 
     await _refreshBadge();
+    _notifyNotificationUpdated();
 
     // TODO: Điều hướng dựa vào message.data.
   }

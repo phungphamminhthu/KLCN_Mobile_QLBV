@@ -3,6 +3,8 @@ import '../../../core/widgets/app_scaffold.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/network/api_client.dart';
 import '../../news/screens/news_detail_screen.dart';
+import '../../../core/providers/patient_profile_manager.dart';
+import '../../profile/screens/add_patient_profile_screen.dart';
 
 /// ============================================================
 /// HOME SCREEN - MÀN HÌNH CHÍNH ỨNG DỤNG MEDCARE
@@ -37,11 +39,43 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _newsLoading = true;
   String? _newsError;
 
+  // =========================
+  // tải hồ sơ danh sách khám bệnh
+  // =========================
   @override
-  void initState() {
-    super.initState();
-    _loadLatestNews();
+void initState() {
+  super.initState();
+
+  _loadLatestNews();
+  _loadPatientProfiles();
+}
+
+Future<void> _loadPatientProfiles() async {
+  try {
+    await PatientProfileManager.instance.loadProfiles(
+      resetToDefault: true,
+    );
+
+    if (!mounted) return;
+
+    final selected = PatientProfileManager.instance.selectedProfile;
+
+    debugPrint('===== HỒ SƠ BỆNH NHÂN ĐANG CHỌN =====');
+    debugPrint('MaBenhNhan: ${selected?.maBenhNhan}');
+    debugPrint('HoTen: ${selected?.hoTen}');
+  } catch (e) {
+    debugPrint('Không thể tải hồ sơ bệnh nhân: $e');
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Không thể tải danh sách hồ sơ bệnh nhân.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
+}
 
   Future<void> _loadLatestNews() async {
     try {
@@ -157,69 +191,124 @@ class _HomeScreenState extends State<HomeScreen> {
   // ==========================================================
   // 1. HEADER - LOGO VÀ TÊN BỆNH VIỆN
   // ==========================================================
-  Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Container(
-        //   width: 52,
-        //   height: 52,
-        //   decoration: BoxDecoration(
-        //     color: Colors.white,
-        //     borderRadius: BorderRadius.circular(16),
-        //     boxShadow: [
-        //       BoxShadow(
-        //         color: primary.withValues(alpha: 0.10),
-        //         blurRadius: 12,
-        //         offset: const Offset(0, 4),
-        //       ),
-        //     ],
-        //   ),
-        //   child: const Icon(
-        //     Icons.medical_services_outlined,
-        //     color: Color(0xFF0284C7),
-        //     size: 30,
-        //   ),
-        // ),
+  // Widget _buildHeader() {
+  //   return Column(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //       Container(
+  //                       width: 50,
+  //                       height: 50,
+  //                       decoration: BoxDecoration(
+  //                         color: primary,
+  //                         borderRadius: BorderRadius.circular(10),
+  //                       ),
+  //                       child: const Icon(
+  //                         Icons.local_hospital_rounded,
+  //                         color: Colors.white,
+  //                         size: 30,
+  //                       ),
+  //                     ),
 
-        Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: primary,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.local_hospital_rounded,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                      ),
+  //       const SizedBox(height: 18),
 
-        const SizedBox(height: 18),
+  //       const Text(
+  //         'MedCare Hospital',
+  //         style: TextStyle(
+  //           fontSize: 31,
+  //           fontWeight: FontWeight.w800,
+  //           letterSpacing: -1,
+  //           color: Color(0xFF0369A1),
+  //         ),
+  //       ),
 
-        const Text(
-          'MedCare Hospital',
-          style: TextStyle(
-            fontSize: 31,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -1,
-            color: Color(0xFF0369A1),
+  //       const SizedBox(height: 2),
+
+  //       const Text(
+  //         'Ứng dụng dành cho Người bệnh',
+  //         style: TextStyle(
+  //           fontSize: 17,
+  //           color: Color(0xFF2877A8),
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
+  
+Widget _buildHeader() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // Logo bên trái và icon tài khoản bên phải
+      Row(
+        children: [
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: primary,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.local_hospital_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
-        ),
 
-        const SizedBox(height: 2),
+          const Spacer(),
 
-        const Text(
-          'Ứng dụng dành cho Người bệnh',
-          style: TextStyle(
-            fontSize: 17,
-            color: Color(0xFF2877A8),
+          // Nút chuyển đổi hồ sơ bệnh nhân
+          InkWell(
+            onTap: _showPatientProfiles,
+            borderRadius: BorderRadius.circular(30),
+            child: Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [
+                  BoxShadow(
+                    color: primary.withValues(alpha: 0.12),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.account_circle_outlined,
+                color: primary,
+                size: 30,
+              ),
+            ),
           ),
+        ],
+      ),
+
+      const SizedBox(height: 18),
+
+      const Text(
+        'MedCare Hospital',
+        style: TextStyle(
+          fontSize: 31,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -1,
+          color: Color(0xFF0369A1),
         ),
-      ],
-    );
-  }
+      ),
+
+      const SizedBox(height: 2),
+
+      const Text(
+        'Ứng dụng dành cho Người bệnh',
+        style: TextStyle(
+          fontSize: 17,
+          color: Color(0xFF2877A8),
+        ),
+      ),
+    ],
+  );
+}
+
 
   // ==========================================================
   // 2. KHUNG CHỨC NĂNG
@@ -788,7 +877,294 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+ // =================================
+ // chuyển đổi hồ sơ
+ // =================================
+ void _showPatientProfiles() {
+  final manager = PatientProfileManager.instance;
 
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) {
+      return ListenableBuilder(
+        listenable: manager,
+        builder: (context, child) {
+          final profiles = manager.profiles;
+          final selectedProfile = manager.selectedProfile;
+
+          return Container(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(26),
+              ),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Thanh kéo phía trên.
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 22),
+
+                  // Tiêu đề.
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Chọn hồ sơ bệnh nhân',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          Navigator.pop(sheetContext);
+                        },
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 5),
+
+                  const Text(
+                    'Chọn hồ sơ muốn sử dụng để đặt lịch và theo dõi thông tin khám chữa bệnh.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF64748B),
+                      height: 1.4,
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  if (manager.isLoading && profiles.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(30),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: primary,
+                        ),
+                      ),
+                    )
+                  else if (profiles.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.person_off_outlined,
+                              size: 45,
+                              color: Color(0xFF94A3B8),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'Chưa có hồ sơ bệnh nhân.',
+                              style: TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    ...profiles.map((profile) {
+                      final isSelected =
+                          selectedProfile?.maBenhNhan ==
+                          profile.maBenhNhan;
+
+                      return InkWell(
+                        onTap: () {
+                          manager.selectProfile(profile);
+
+                          Navigator.pop(sheetContext);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Đã chuyển sang hồ sơ ${profile.hoTen}.',
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(15),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFFEFF6FF)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected
+                                  ? primary
+                                  : const Color(0xFFE2E8F0),
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? const Color(0xFFDBEAFE)
+                                      : const Color(0xFFF1F5F9),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  profile.moiQuanHe.toLowerCase() ==
+                                          'banthan'
+                                      ? Icons.person
+                                      : Icons.people_alt_outlined,
+                                  color: primary,
+                                  size: 26,
+                                ),
+                              ),
+
+                              const SizedBox(width: 13),
+
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      profile.hoTen,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 5),
+
+                                    Text(
+                                      profile.laHoSoMacDinh
+                                          ? 'Bản thân'
+                                          : profile.moiQuanHe,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              if (isSelected)
+                                const Icon(
+                                  Icons.check_circle,
+                                  color: primary,
+                                  size: 25,
+                                )
+                              else
+                                const Icon(
+                                  Icons.radio_button_unchecked,
+                                  color: Color(0xFFCBD5E1),
+                                  size: 23,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+
+                  const SizedBox(height: 8),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(sheetContext);
+
+                        final result = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AddPatientProfileScreen(),
+                          ),
+                        );
+
+                        if (result == true && mounted) {
+                          await _loadPatientProfiles();
+                        }
+                      },
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: const Text('Thêm hồ sơ bệnh nhân'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: primary,
+                        side: const BorderSide(color: primary),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Color(0xFF64748B),
+                          size: 19,
+                        ),
+                        SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            'Hồ sơ được chọn sẽ được sử dụng cho các chức năng khám chữa bệnh.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
   // ==========================================================
   // 6. ĐIỀU HƯỚNG ĐẾN CÁC CHỨC NĂNG
   // ==========================================================

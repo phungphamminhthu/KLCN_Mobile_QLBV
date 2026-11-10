@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import 'medical_record_detail_screen.dart';
+import '../../../core/providers/patient_profile_manager.dart';
 
 class MedicalRecordsScreen extends StatefulWidget {
   const MedicalRecordsScreen({super.key});
@@ -23,6 +24,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   String? _error;
   String _keyword = '';
   String _status = 'Tất cả';
+  int _loadRequestId = 0;
 
   final List<String> _statuses = [
   'Tất cả',
@@ -34,8 +36,27 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   @override
   void initState() {
     super.initState();
+
+    PatientProfileManager.instance.addListener(
+      _onPatientProfileChanged,
+    );
+
     _loadRecords();
   }
+
+  void _onPatientProfileChanged() {
+    _loadRecords();
+  }
+
+  @override
+  void dispose() {
+    PatientProfileManager.instance.removeListener(
+      _onPatientProfileChanged,
+    );
+
+    _loadRequestId++;
+    super.dispose();
+}
 
   String _statusLabel(String status) {
     switch (status.trim().toLowerCase()) {
@@ -83,17 +104,37 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
     }
     }
 
+  // ==================================
+  // tải danh sách hồ sơ bệnh án
+  // ==================================
   Future<void> _loadRecords() async {
+    if (!mounted) return;
+
+    final requestId = ++_loadRequestId;
+
+    final maBenhNhan =
+        PatientProfileManager.instance.selectedPatientId;
+
+    if (maBenhNhan == null) {
+      setState(() {
+        _records = [];
+        _error = 'Vui lòng chọn hồ sơ bệnh nhân.';
+        _loading = false;
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      // API lấy hồ sơ của bệnh nhân đang đăng nhập.
-      // ApiClient cần tự gửi Authorization: Bearer <token>.
-      final response =
-          await ApiClient.instance.get('/api/medical-records');
+      final response = await ApiClient.instance.get(
+        '/api/medical-records?maBenhNhan=$maBenhNhan',
+      );
+
+      if (!mounted || requestId != _loadRequestId) return;
 
       if (response is! List) {
         throw Exception('Dữ liệu hồ sơ không hợp lệ.');
@@ -108,6 +149,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         final dateA = DateTime.tryParse(
           (a['ngayKham'] ?? a['NgayKham'] ?? '').toString(),
         );
+
         final dateB = DateTime.tryParse(
           (b['ngayKham'] ?? b['NgayKham'] ?? '').toString(),
         );
@@ -115,10 +157,11 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         if (dateA == null && dateB == null) return 0;
         if (dateA == null) return 1;
         if (dateB == null) return -1;
+
         return dateB.compareTo(dateA);
       });
 
-      if (!mounted) return;
+      if (!mounted || requestId != _loadRequestId) return;
 
       setState(() {
         _records = records;
@@ -127,7 +170,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
     } catch (e) {
       debugPrint('Lỗi tải hồ sơ bệnh án: $e');
 
-      if (!mounted) return;
+      if (!mounted || requestId != _loadRequestId) return;
 
       setState(() {
         _error = 'Không thể tải hồ sơ bệnh án. Vui lòng thử lại.';

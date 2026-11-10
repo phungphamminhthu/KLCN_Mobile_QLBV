@@ -496,8 +496,9 @@ class ApiClient {
     );
   }
 
-
-  /// Lấy hồ sơ của tài khoản đang đăng nhập.
+   // ======================================
+  // Lấy hồ sơ của tài khoản đang đăng nhập.
+  // =======================================
   Future<Map<String, dynamic>> getCurrentUser() async {
     if (_token == null || _token!.isEmpty) {
       throw const ApiException(
@@ -516,9 +517,50 @@ class ApiClient {
     );
   }
 
-  
+  // =========================================
+  // Tạo hồ sơ bệnh nhân mới cho tài khoản đang đăng nhập.
+  // =========================================
+  Future<Map<String, dynamic>> createPatientProfile({
+    required String hoTen,
+    required String moiQuanHe,
+    String? ngaySinh,
+    String? gioiTinh,
+    String? diaChi,
+    String? soDienThoaiKhanCap,
+    String? tienSuBenh,
+  }) async {
+    if (_token == null || _token!.isEmpty) {
+      throw const ApiException(
+        'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+      );
+    }
+
+    final result = await post(
+      '/api/benh-nhan/ho-so',
+      body: {
+        'hoTen': hoTen.trim(),
+        'moiQuanHe': moiQuanHe,
+        'ngaySinh': ngaySinh,
+        'gioiTinh': gioiTinh,
+        'diaChi': diaChi?.trim(),
+        'soDienThoaiKhanCap': soDienThoaiKhanCap?.trim(),
+        'tienSuBenh': tienSuBenh?.trim(),
+      },
+    );
+
+    if (result is Map) {
+      return Map<String, dynamic>.from(result);
+    }
+
+    throw const ApiException(
+      'Phản hồi tạo hồ sơ từ máy chủ không hợp lệ.',
+    );
+  }
+
+  // ======================================================
   /// Đổi mật khẩu khi người dùng đã đăng nhập.
   /// Backend cần có POST /api/auth/change-password.
+  // ======================================================
   Future<Map<String, dynamic>> changePassword({
     required String currentPassword,
     required String newPassword,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/widgets/app_scaffold.dart';
 import '../controllers/notification_badge_controller.dart';
+import '../services/fcm_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -22,8 +23,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
+
+    FcmService.notificationUpdateSignal.addListener(
+      _onNotificationUpdated,
+    );
+
     loadNotifications();
   }
+
+  @override
+  void dispose() {
+    FcmService.notificationUpdateSignal.removeListener(
+      _onNotificationUpdated,
+    );
+
+    super.dispose();
+  }
+
+  void _onNotificationUpdated() {
+  if (!mounted || isLoading) return;
+
+  loadNotifications();
+}
 
   Future<void> loadNotifications() async {
     if (!mounted) return;
@@ -181,6 +202,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return Icons.local_hospital_outlined;
     }
 
+    if (normalized.contains('ho_so') ||
+        normalized.contains('benh_nhan')) {
+      return Icons.folder_shared_outlined;
+    }
+
     return Icons.notifications_active_outlined;
   }
 
@@ -200,6 +226,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (normalized.contains('thanh') ||
         normalized.contains('payment')) {
       return const Color(0xFFD97706);
+    }
+
+    if (normalized.contains('ho_so') ||
+        normalized.contains('benh_nhan')) {
+      return const Color(0xFF2563EB);
     }
 
     return const Color(0xFF7C3AED);

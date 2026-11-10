@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import 'appointment_detail_screen.dart';
 import 'payment_qr_screen.dart';
-
+import '../../../core/providers/patient_profile_manager.dart';
 
 class AppointmentsScreen extends StatefulWidget {
   const AppointmentsScreen({super.key});
@@ -44,107 +44,247 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   @override
   void initState() {
     super.initState();
+
+    PatientProfileManager.instance.addListener(
+      _onPatientProfileChanged,
+    );
+
     _loadAppointments();
   }
 
-  Future<void> _loadAppointments() async {
+  void _onPatientProfileChanged() {
     if (!mounted) return;
 
+    _loadAppointments();
+  }
+
+  @override
+  void dispose() {
+    PatientProfileManager.instance.removeListener(
+      _onPatientProfileChanged,
+    );
+
+    super.dispose();
+  }
+
+  // ===================================
+  // load lịch sử đăng ký
+  // ===================================
+  Future<void> _loadAppointments() async {
+  if (!mounted) return;
+
+  final profileManager = PatientProfileManager.instance;
+
+  // Lấy mã hồ sơ bệnh nhân đang được chọn.
+  var maBenhNhan = profileManager.selectedPatientId;
+
+  // Nếu chưa có hồ sơ được chọn thì thử tải lại danh sách hồ sơ.
+  if (maBenhNhan == null) {
+    try {
+      await profileManager.loadProfiles(resetToDefault: false);
+    } catch (e) {
+      debugPrint('Lỗi tải hồ sơ bệnh nhân: $e');
+    }
+
+    if (!mounted) return;
+
+    // Lấy lại mã hồ sơ sau khi tải.
+    maBenhNhan = profileManager.selectedPatientId;
+  }
+
+  // Vẫn không có mã bệnh nhân thì không thể tải lịch khám.
+  if (maBenhNhan == null) {
     setState(() {
-      _isLoading = true;
+      _appointments = [];
+      _isLoading = false;
+      _errorMessage = 'Không xác định được hồ sơ bệnh nhân. '
+          'Vui lòng chọn hoặc tạo hồ sơ bệnh nhân trước.';
+    });
+
+    debugPrint('LỖI: Không tìm thấy MaBenhNhan đang được chọn.');
+    return;
+  }
+
+  setState(() {
+    _isLoading = true;
+    _errorMessage = null;
+  });
+
+  try {
+    debugPrint('========== TẢI LỊCH KHÁM ==========');
+    debugPrint('MaBenhNhan đang chọn: $maBenhNhan');
+
+    // 1. Lấy danh sách lịch khám theo hồ sơ bệnh nhân.
+    final response = await ApiClient.instance.get(
+      '/api/lich-kham/cua-toi?maBenhNhan=$maBenhNhan',
+    );
+
+    if (!mounted) return;
+
+    // Nếu người dùng chuyển hồ sơ trong lúc gọi API,
+    // không sử dụng dữ liệu của hồ sơ cũ.
+    if (profileManager.selectedPatientId != maBenhNhan) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      debugPrint('Hồ sơ đã thay đổi, bỏ qua dữ liệu cũ.');
+      return;
+    }
+
+    if (response is! List) {
+      throw const FormatException(
+        'Dữ liệu lịch khám từ máy chủ không hợp lệ.',
+      );
+    }
+
+    // 2. Chuyển dữ liệu API thành danh sách lịch khám.
+    final List<Map<String, dynamic>> appointments =
+        response.map<Map<String, dynamic>>((item) {
+      if (item is! Map) {
+        throw const FormatException(
+          'Thông tin lịch khám không hợp lệ.',
+        );
+      }
+
+      final json = Map<String, dynamic>.from(item);
+
+      debugPrint('DEBUG lịch khám: $json');
+
+      return {
+        // Quan trọng:
+        // Gán mã bệnh nhân từ hồ sơ đang chọn,
+        // không phụ thuộc API có trả maBenhNhan hay không.
+        'maBenhNhan': maBenhNhan,
+
+        'maLichKham': json['maLichKham'],
+        'maSoThuTu': json['maSoThuTu'],
+        'soThuTu': json['soThuTu'],
+        'ngayKham': json['ngayKham']?.toString() ?? '',
+        'gioKham': json['gioKham']?.toString() ?? '',
+        'tenKhoa': json['tenKhoa']?.toString() ?? 'Chưa cập nhật',
+        'tenBacSi': json['tenBacSi']?.toString() ?? 'Chưa phân công',
+        'tenPhong': json['tenPhong']?.toString() ?? 'Chưa cập nhật',
+        'lyDoKham': json['lyDoKham']?.toString() ?? '',
+        'trangThaiLichKham':
+            json['trangThaiLichKham']?.toString() ?? '',
+        'trangThaiSoThuTu':
+            json['trangThaiSoThuTu']?.toString() ?? '',
+        'tongChiPhi': _toDouble(json['tongChiPhi']),
+        'tongDaThanhToan': _toDouble(json['tongDaThanhToan']),
+        'soTienConLai': _toDouble(json['soTienConLai']),
+        'danhSachHoaDon': <Map<String, dynamic>>[],
+      };
+    }).toList();
+
+    debugPrint('Tổng số lịch khám nhận được: ${appointments.length}');
+
+    // 3. Tải danh sách hóa đơn của từng lịch khám.
+    for (final appointment in appointments) {
+      if (!mounted) return;
+
+      // Không tiếp tục nếu người dùng đã đổi hồ sơ.
+      if (profileManager.selectedPatientId != maBenhNhan) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        debugPrint('Hồ sơ đã thay đổi khi tải hóa đơn.');
+        return;
+      }
+
+      final maLichKham = int.tryParse(
+        appointment['maLichKham']?.toString() ?? '',
+      );
+
+      if (maLichKham == null) {
+        debugPrint('Không xác định được MaLichKham.');
+        continue;
+      }
+
+      try {
+        debugPrint('========== TẢI HÓA ĐƠN ==========');
+        debugPrint('MaLichKham: $maLichKham');
+        debugPrint('MaBenhNhan: $maBenhNhan');
+
+        final invoiceResponse = await ApiClient.instance.get(
+          '/api/thanh-toan/lich-kham/$maLichKham/hoa-don'
+          '?maBenhNhan=$maBenhNhan',
+        );
+
+        debugPrint('KẾT QUẢ API HÓA ĐƠN: $invoiceResponse');
+
+        if (!mounted) return;
+
+        if (profileManager.selectedPatientId != maBenhNhan) {
+          setState(() {
+            _isLoading = false;
+          });
+
+          debugPrint('Hồ sơ đã thay đổi, dừng tải hóa đơn.');
+          return;
+        }
+
+        if (invoiceResponse is List) {
+          appointment['danhSachHoaDon'] = invoiceResponse
+              .whereType<Map>()
+              .map(
+                (item) => Map<String, dynamic>.from(item),
+              )
+              .toList();
+        }
+      } catch (e) {
+        debugPrint(
+          'Không tải được hóa đơn của lịch $maLichKham: $e',
+        );
+      }
+    }
+
+    if (!mounted) return;
+
+    // 4. Kiểm tra lần cuối trước khi cập nhật giao diện.
+    if (profileManager.selectedPatientId != maBenhNhan) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      debugPrint('Hồ sơ đã thay đổi trước khi cập nhật giao diện.');
+      return;
+    }
+
+    // 5. Cập nhật danh sách lịch khám.
+    setState(() {
+      _appointments = appointments;
+      _isLoading = false;
       _errorMessage = null;
     });
 
-    try {
-      final response =
-          await ApiClient.instance.get('/api/lich-kham/cua-toi');
+    debugPrint('========== HOÀN TẤT ==========');
+    debugPrint('MaBenhNhan: $maBenhNhan');
+    debugPrint('Tổng số lịch khám: ${appointments.length}');
 
-      if (response is! List) {
-        throw const FormatException(
-          'Dữ liệu lịch khám từ máy chủ không hợp lệ.',
-        );
-      }
-
-      final appointments = response.map<Map<String, dynamic>>((item) {
-        if (item is! Map) {
-          throw const FormatException('Thông tin lịch khám không hợp lệ.');
-        }
-
-        final json = Map<String, dynamic>.from(item);
-
-        // DEBUG LỖI
-        debugPrint('DEBUG lịch khám: $json');
-
-        return {
-          'maLichKham': json['maLichKham'],
-          'maSoThuTu': json['maSoThuTu'],
-          'soThuTu': json['soThuTu'],
-          'ngayKham': json['ngayKham']?.toString() ?? '',
-          'gioKham': json['gioKham']?.toString() ?? '',
-          'tenKhoa': json['tenKhoa']?.toString() ?? 'Chưa cập nhật',
-          'tenBacSi': json['tenBacSi']?.toString() ?? 'Chưa phân công',
-          'tenPhong': json['tenPhong']?.toString() ?? 'Chưa cập nhật',
-          'lyDoKham': json['lyDoKham']?.toString() ?? '',
-          'trangThaiLichKham':
-              json['trangThaiLichKham']?.toString() ?? '',
-          'trangThaiSoThuTu':
-              json['trangThaiSoThuTu']?.toString() ?? '',
-          'tongChiPhi': _toDouble(json['tongChiPhi']),
-          'tongDaThanhToan': _toDouble(json['tongDaThanhToan']),
-          'soTienConLai': _toDouble(json['soTienConLai']),
-        };
-      }).toList();
-      
-      // tải danh sách hóa đơn cho từng lịch khám 
-      for (final appointment in appointments) {
-        final maLichKham = int.tryParse(
-          appointment['maLichKham']?.toString() ?? '',
-        );
-
-        appointment['danhSachHoaDon'] = <Map<String, dynamic>>[];
-
-        if (maLichKham == null) continue;
-
-        try {
-
-          debugPrint('ĐANG GỌI API HÓA ĐƠN: $maLichKham');
-
-          final invoiceResponse = await ApiClient.instance.get(
-            '/api/thanh-toan/lich-kham/$maLichKham/hoa-don',
-          );
-
-          debugPrint('KẾT QUẢ API HÓA ĐƠN: $invoiceResponse');
-
-          if (invoiceResponse is List) {
-            appointment['danhSachHoaDon'] =
-                invoiceResponse
-                    .whereType<Map>()
-                    .map((item) => Map<String, dynamic>.from(item))
-                    .toList();
-          }
-        } catch (e) {
-          debugPrint(
-            'Không tải được hóa đơn của lịch $maLichKham: $e',
-          );
-        }
-      }
-      if (!mounted) return;
-
-      setState(() {
-        _appointments = appointments;
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _isLoading = false;
-        _errorMessage = e is ApiException
-            ? e.message
-            : 'Không thể tải lịch khám. Vui lòng thử lại.';
-      });
+    for (final appointment in appointments) {
+      debugPrint(
+        'Lịch ${appointment['maLichKham']} '
+        '| Bệnh nhân ${appointment['maBenhNhan']} '
+        '| Số hóa đơn: '
+        '${(appointment['danhSachHoaDon'] as List).length}',
+      );
     }
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      _errorMessage = e is ApiException
+          ? e.message
+          : 'Không thể tải lịch khám. Vui lòng thử lại.';
+    });
+
+    debugPrint('========== LỖI TẢI LỊCH KHÁM ==========');
+    debugPrint('$e');
   }
+}
 
   static double _toDouble(dynamic value) {
     if (value is num) return value.toDouble();
@@ -280,11 +420,23 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   // ====================================
   // ĐIỀU HƯỚNG ĐẾN MÀN HÌNH THANH TOÁN 
   //=====================================
-  Future<void> _openPayment(int maHoaDon) async {
+  Future<void> _openPayment({
+    required int maHoaDon,
+    required int maBenhNhan,
+  }) async {
+    // Đảm bảo hồ sơ đang chọn vẫn là hồ sơ đã dùng để tải hóa đơn.
+    if (PatientProfileManager.instance.selectedPatientId != maBenhNhan) {
+      _showMessage(
+        'Hồ sơ bệnh nhân đã thay đổi. Vui lòng tải lại lịch khám.',
+      );
+      return;
+    }
+
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => PaymentQrScreen(
           maHoaDon: maHoaDon,
+          maBenhNhan: maBenhNhan,
         ),
       ),
     );
@@ -297,26 +449,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     }
   }
 
-  // List<Map<String, dynamic>> get _filteredAppointments {
-  //   switch (_filter) {
-  //     case 'Chưa thanh toán':
-  //       return _appointments.where((a) {
-  //         return (a['soTienConLai'] as double) > 0 &&
-  //             a['trangThaiLichKham'] != 'DaHuy';
-  //       }).toList();
-
-  //     case 'Đã thanh toán':
-  //       return _appointments.where((a) {
-  //         return (a['tongChiPhi'] as double) > 0 &&
-  //             (a['soTienConLai'] as double) <= 0 &&
-  //             a['trangThaiLichKham'] != 'DaHuy';
-  //       }).toList();
-
-  //     default:
-  //       return _appointments;
-  //   }
-  // }
-  
   List<Map<String, dynamic>> get _filteredAppointments {
     double getAmount(dynamic value) {
       return double.tryParse(value?.toString() ?? '') ?? 0.0;
@@ -663,15 +795,6 @@ Color _appointmentColor(String status) {
       ),
       body: Column(
         children: [
-          // Container(
-          //   width: double.infinity,
-          //   color: Colors.white,
-          //   padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
-          //   child: const Text(
-          //     'Theo dõi lịch khám và tình trạng thanh toán của bạn.',
-          //     style: TextStyle(color: textSecondary, fontSize: 14),
-          //   ),
-          // ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
             child: SingleChildScrollView(
@@ -945,18 +1068,23 @@ Color _appointmentColor(String status) {
                         invoice?['maHoaDon']?.toString() ?? '',
                       );
 
-                      if (maHoaDon == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Chưa tìm thấy hóa đơn chưa thanh toán.',
-                            ),
-                          ),
+                      final maBenhNhan = int.tryParse(
+                        appointment['maBenhNhan']?.toString() ?? '',
+                      );
+
+                      if (maHoaDon == null || maBenhNhan == null) {
+                        _showMessage(
+                          maHoaDon == null
+                              ? 'Chưa tìm thấy hóa đơn chưa thanh toán.'
+                              : 'Không xác định được hồ sơ bệnh nhân.',
                         );
                         return;
                       }
 
-                      _openPayment(maHoaDon);
+                      _openPayment(
+                        maHoaDon: maHoaDon,
+                        maBenhNhan: maBenhNhan,
+                      );
                     },
                     icon: const Icon(
                       Icons.account_balance_wallet_outlined,

@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/providers/patient_profile_manager.dart';
 
 class FollowUpsScreen extends StatefulWidget {
   const FollowUpsScreen({super.key});
@@ -21,58 +22,98 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> {
   List<Map<String, dynamic>> _followUps = [];
   bool _loading = true;
   String? _error;
+  int _loadRequestId = 0;
 
   @override
   void initState() {
     super.initState();
+
+    PatientProfileManager.instance.addListener(
+      _onPatientProfileChanged,
+    );
+
     _loadFollowUps();
   }
 
-  Future<void> _loadFollowUps() async {
-    if (!mounted) return;
+  void _onPatientProfileChanged() {
+    _loadFollowUps();
+  }
 
+  @override
+  void dispose() {
+    PatientProfileManager.instance.removeListener(
+      _onPatientProfileChanged,
+    );
+
+    _loadRequestId++;
+    super.dispose();
+  }
+  Future<void> _loadFollowUps() async {
+  if (!mounted) return;
+
+  final requestId = ++_loadRequestId;
+
+  final maBenhNhan =
+      PatientProfileManager.instance.selectedPatientId;
+
+  if (maBenhNhan == null) {
     setState(() {
-      _loading = true;
-      _error = null;
+      _followUps = [];
+      _error = 'Vui lòng chọn hồ sơ bệnh nhân.';
+      _loading = false;
+    });
+    return;
+  }
+
+  setState(() {
+    _loading = true;
+    _error = null;
+  });
+
+  try {
+    final response = await ApiClient.instance.get(
+      '/api/follow-ups/my?maBenhNhan=$maBenhNhan',
+    );
+
+    // Bỏ qua kết quả của hồ sơ cũ nếu người dùng đã chuyển hồ sơ.
+    if (!mounted || requestId != _loadRequestId) return;
+
+    if (response is! List) {
+      throw Exception(
+        'Dữ liệu lịch tái khám không hợp lệ.',
+      );
+    }
+
+    final items = response
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+
+    items.sort((a, b) {
+      final dateA = _parseDate(a['ngayTaiKham']);
+      final dateB = _parseDate(b['ngayTaiKham']);
+
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+
+      return dateA.compareTo(dateB);
     });
 
-    try {
-      final response =
-          await ApiClient.instance.get('/api/follow-ups/my');
+    if (!mounted || requestId != _loadRequestId) return;
 
-      if (response is! List) {
-        throw Exception('Dữ liệu lịch tái khám không hợp lệ.');
-      }
+    setState(() {
+      _followUps = items;
+      _loading = false;
+    });
+  } catch (e) {
+    if (!mounted || requestId != _loadRequestId) return;
 
-      final items = response
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList();
-
-      items.sort((a, b) {
-        final dateA = _parseDate(a['ngayTaiKham']);
-        final dateB = _parseDate(b['ngayTaiKham']);
-
-        if (dateA == null) return 1;
-        if (dateB == null) return -1;
-        return dateA.compareTo(dateB);
-      });
-
-      if (!mounted) return;
-
-      setState(() {
-        _followUps = items;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-        _loading = false;
-      });
-    }
+    setState(() {
+      _error = e.toString().replaceFirst('Exception: ', '');
+      _loading = false;
+    });
   }
+}
 
   DateTime? _parseDate(dynamic value) {
     if (value == null) return null;

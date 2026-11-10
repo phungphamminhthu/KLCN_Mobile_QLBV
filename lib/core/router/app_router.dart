@@ -20,6 +20,7 @@
   import '../../features/medical_records/screens/medical_records_screen.dart';
   import '../../features/invoices/screens/invoices_screen.dart';
   import '../../features/follow_ups/screens/follow_ups_screen.dart';
+  import '../../features/chatbot/screens/chatbot_screen.dart';
 
   /// ============================================================
   /// APP ROUTER - QUẢN LÝ ĐIỀU HƯỚNG TOÀN BỘ ỨNG DỤNG
@@ -58,6 +59,7 @@
     static const String medicalRecords = '/medical-records'; // trang hosobenhan
     static const String invoices = '/invoices'; // trang thanhtoan
     static const String followUps = '/follow-ups';
+    static const chatbot = '/chatbot';
 
     /// Xác định màn hình cần mở dựa trên tên route.
     static Route<dynamic> onGenerateRoute(RouteSettings settings) {
@@ -101,11 +103,13 @@
             settings: settings,
             builder: (_) => const DoctorListScreen(),
           );
+
         case news:
           return MaterialPageRoute(
             settings: settings,
             builder: (_) => const news_page.HomeScreen(),
           );
+
         case about:
           return MaterialPageRoute(
             settings: settings,
@@ -116,6 +120,12 @@
           return MaterialPageRoute(
             settings: settings,
             builder: (_) => const AppointmentsScreen(),
+          );
+
+        case chatbot:
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => const ChatbotScreen(),
           );
 
         case invoices:
